@@ -1,2 +1,4 @@
 requests>=2.25.1
 python-dotenv>=0.21.0
+
+# Python 3.10+ required (list[dict] type hint syntax in advanced/client.py)
