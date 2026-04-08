@@ -2,6 +2,12 @@
 
 Log workouts to Google Sheets using natural language via Nutritionix and Sheety.
 
+Type a plain-English description of your workout — "I ran 5km and did 20 minutes of yoga" — and the script parses it, calculates duration and calories burned, then writes each exercise as a timestamped row directly into a Google Sheet. No manual data entry, no spreadsheet formulas to maintain.
+
+The project is built in two versions. The **original** build is the course script from Day 38 of 100 Days of Code: a single file, hardcoded credentials, procedural top-to-bottom execution. It shows the raw mechanics of chaining two APIs together. The **advanced** build refactors it into separate classes (`NutritionixClient`, `SheetWriter`), centralises all constants in `config.py`, and loads credentials from a `.env` file. Both versions are launchable from a shared `menu.py`.
+
+The two external services doing the heavy lifting are [Nutritionix](https://www.nutritionix.com/business/api) — which exposes a natural language endpoint that converts workout descriptions into structured exercise data — and [Sheety](https://sheety.co) — which wraps any Google Sheet in a REST API so you can POST rows to it with a plain HTTP request.
+
 ---
 
 ## Table of Contents
