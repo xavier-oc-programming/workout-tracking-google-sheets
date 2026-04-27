@@ -113,6 +113,7 @@ python original/main.py      # uses hardcoded credentials — may fail if Nutrit
 |---|---|---|
 | Natural language exercise input | Yes | Yes |
 | Exercise parsing | Nutritionix API (cloud) | Ollama LLM (local) |
+| Calorie calculation | Nutritionix (cloud estimate) | MET table (local, scientific) |
 | Google Sheets logging via Sheety | Yes | Yes |
 | Basic Auth for Sheety | Yes | Yes |
 | Requires API key / account | Yes (Nutritionix) | No |
@@ -121,31 +122,33 @@ python original/main.py      # uses hardcoded credentials — may fail if Nutrit
 | OOP modules | No | Yes |
 | Config constants centralised | No | Yes |
 | Proper error surfacing (`raise_for_status`) | No | Yes |
+| Synonym normalisation | No | Yes |
+| Session loop (log multiple exercises) | No | Yes |
 | Runnable from `menu.py` | — | Yes |
 
 ---
 
 ## 3. Usage
 
-Both builds prompt for a natural-language exercise description, then log each parsed exercise to Google Sheets.
+The advanced build prompts for a natural-language exercise description in a loop — log as many sessions as you like, then type `q` to return to the menu.
 
 ```
-Tell me which exercises you did: I ran 5km and did push-ups for 20 minutes
-```
+Tell me which exercises you did (or 'q' to go back): ran 5km and did push-ups for 20 minutes
 
-**Example output (advanced):**
+  Logged to Google Sheets — 27/04/2026 at 11:32:10
 
-```
-Logged: Running — 30 min, 290.0 kcal → {'workout': {'id': 2, 'date': '27/04/2026', ...}}
-Logged: Push-Ups — 20 min, 112.0 kcal → {'workout': {'id': 3, 'date': '27/04/2026', ...}}
+  ✓  Running              30 min   343.0 kcal
+  ✓  Push-Ups             20 min   66.5 kcal
+
+Tell me which exercises you did (or 'q' to go back): q
 ```
 
 **Google Sheet result:**
 
 | date | time | exercise | duration (minutes) | calories |
 |---|---|---|---|---|
-| 27/04/2026 | 11:32:10 | Running | 30 | 290.0 |
-| 27/04/2026 | 11:32:10 | Push-Ups | 20 | 112.0 |
+| 27/04/2026 | 11:32:10 | Running | 30 | 343.0 |
+| 27/04/2026 | 11:32:10 | Push-Ups | 20 | 66.5 |
 
 ---
 
@@ -156,12 +159,14 @@ Logged: Push-Ups — 20 min, 112.0 kcal → {'workout': {'id': 3, 'date': '27/04
 ```
 User input (plain English)
   → POST to Ollama local API (localhost:11434/api/chat)
-      body: { model, messages: [{ role: "user", content: prompt with user stats }] }
-  → Response: JSON array of exercise objects with name, duration_min, nf_calories
-    → For each exercise: round duration to int, round calories to 2dp
-      → POST to Sheety endpoint with Basic Auth
-          body: { workout: { date, time, exercise, duration (minutes), calories } }
-            → New row appears in Google Sheet
+      body: { model, messages: [{ role: "user", content: prompt }] }
+  → Response: JSON array with name and duration_min only
+    → For each exercise:
+        → Apply synonym map (e.g. "jogging" → "Running")
+        → Calculate calories via MET table: MET × weight_kg × (duration_min / 60)
+          → POST to Sheety endpoint with Basic Auth
+              body: { workout: { date, time, exercise, duration (minutes), calories } }
+                → New row appears in Google Sheet
 ```
 
 **Original build:**
@@ -195,6 +200,12 @@ User input (plain English)
 
 **Local LLM parsing via Ollama.** Exercise descriptions are interpreted by `llama3.2` running entirely on your machine — no cloud account, no API key, no usage limits, no cost.
 
+**MET-based calorie calculation.** Calories are computed locally using the Metabolic Equivalent of Task formula (`MET × weight_kg × duration_hours`) against a built-in table of 28 exercises. This is the same method used in sports science and is far more consistent than asking an LLM to estimate.
+
+**Synonym normalisation.** A built-in map resolves common variations to canonical names before logging — "jogging" → "Running", "swam" → "Swimming", "biking" → "Cycling", etc. — keeping the sheet consistent regardless of how the user phrases their input.
+
+**Session loop.** The advanced build stays open after each log and re-prompts immediately, so you can log an entire workout session in one go. Type `q` to return to the main menu.
+
 **OOP module split.** `OllamaClient` handles all LLM interaction; `SheetWriter` handles all Sheety posting. Each is independently testable.
 
 **Centralised config.** All URLs, model names, formats, and user profile defaults live in `config.py` — no magic values elsewhere.
@@ -223,18 +234,24 @@ advanced/main.py starts
   │
   ├── Load .env credentials (Sheety only)
   ├── Instantiate OllamaClient + SheetWriter
-  ├── Prompt user: "Tell me which exercises you did:"
   │
-  ├── POST prompt to Ollama local API
-  │     ├── HTTP error → raise_for_status() → exception propagates to caller
-  │     └── Success → parse JSON → list of exercise dicts returned
-  │
-  └── For each exercise:
-        ├── Round duration (int) and calories (2dp)
-        ├── POST row to Sheety
+  └── Loop:
+        ├── Prompt: "Tell me which exercises you did (or 'q' to go back):"
+        ├── "q" → break → return to menu
+        │
+        ├── POST prompt to Ollama local API
         │     ├── HTTP error → raise_for_status() → exception propagates
-        │     └── Success → print confirmation + created row
-        └── Continue to next exercise
+        │     └── Success → parse JSON → list of { name, duration_min } dicts
+        │
+        ├── For each exercise:
+        │     ├── Apply synonym map → canonical name
+        │     ├── Calculate calories: MET × weight_kg × (duration_min / 60)
+        │     ├── POST row to Sheety with Basic Auth
+        │     │     ├── HTTP error → raise_for_status() → exception propagates
+        │     │     └── Success → print: ✓  Exercise   duration   calories
+        │     └── Continue to next exercise
+        │
+        └── Re-prompt
 ```
 
 ---
@@ -272,8 +289,17 @@ workout-tracking-google-sheets/
 
 | Method | Returns | Description |
 |---|---|---|
-| `__init__(endpoint, model, weight_kg, height_cm, age, gender)` | `None` | Stores Ollama config and user profile for calorie estimation |
-| `get_exercises(query: str)` | `list[dict]` | POSTs prompt to local Ollama API; parses and returns list of exercise dicts |
+| `__init__(endpoint, model, weight_kg, height_cm, age, gender)` | `None` | Stores Ollama config and user profile |
+| `get_exercises(query: str)` | `list[dict]` | POSTs prompt to Ollama; applies synonym map; calculates calories via MET; returns exercise dicts |
+| `_calories(name, duration_min)` | `float` | Looks up MET value for exercise, computes `MET × weight_kg × (duration_min / 60)` |
+
+**Module-level constants:**
+
+| Constant | Description |
+|---|---|
+| `SYNONYMS` | Maps informal/past-tense names to canonical exercise names (e.g. `"jogging"` → `"Running"`) |
+| `MET` | MET values for 28 exercises used for local calorie calculation |
+| `DEFAULT_MET` | Fallback MET value (`5.0`) for exercises not in the table |
 
 Each dict in the returned list contains: `name` (str), `duration_min` (float), `nf_calories` (float).
 
@@ -294,8 +320,8 @@ All constants are in [advanced/config.py](advanced/config.py).
 |---|---|---|
 | `OLLAMA_ENDPOINT` | `http://localhost:11434/api/chat` | Local Ollama chat API URL |
 | `OLLAMA_MODEL` | `"llama3.2"` | Model name to use for exercise parsing |
-| `GENDER` | `"male"` | User gender — passed to the LLM for calorie estimation |
-| `WEIGHT_KG` | `70` | User weight in kg |
+| `GENDER` | `"male"` | User gender |
+| `WEIGHT_KG` | `70` | User weight in kg — used directly in the MET calorie formula |
 | `HEIGHT_CM` | `175` | User height in cm |
 | `AGE` | `27` | User age in years |
 | `DATE_FORMAT` | `"%d/%m/%Y"` | Date format for the Google Sheet |
@@ -313,7 +339,7 @@ All constants are in [advanced/config.py](advanced/config.py).
   "messages": [
     {
       "role": "user",
-      "content": "Extract the unique exercises from this input and return ONLY a valid JSON array. List each distinct exercise exactly once — do not repeat or split the same activity. Each object must have exactly these keys: \"name\" (string), \"duration_min\" (number), \"nf_calories\" (number). The name must be the standard well-known exercise name (e.g. 'Swimming', 'Running', 'Cycling', 'Push-Ups', 'Yoga') — never past tense, never a conjugated verb. All values must be non-null numbers. Estimate calories burned using: weight 70kg, height 175cm, age 27, gender male. Input: \"I ran 5km and did push-ups for 20 minutes\""
+      "content": "Extract the unique exercises from this input and return ONLY a valid JSON array. List each distinct exercise exactly once — do not repeat or split the same activity. Each object must have exactly these keys: \"name\" (string), \"duration_min\" (number). The name must be the standard well-known exercise name (e.g. 'Swimming', 'Running', 'Cycling', 'Push-Ups', 'Yoga') — never past tense, never a conjugated verb. All values must be non-null. Input: \"I ran 5km and did push-ups for 20 minutes\""
     }
   ],
   "stream": false,
@@ -325,10 +351,21 @@ All constants are in [advanced/config.py](advanced/config.py).
 
 ```json
 [
-  { "name": "Running", "duration_min": 30, "nf_calories": 290.0 },
-  { "name": "Push-Ups", "duration_min": 20, "nf_calories": 112.0 }
+  { "name": "Running", "duration_min": 30 },
+  { "name": "Push-Ups", "duration_min": 20 }
 ]
 ```
+
+### After synonym map + MET calculation
+
+```json
+[
+  { "name": "Running", "duration_min": 30, "nf_calories": 343.0 },
+  { "name": "Push-Ups", "duration_min": 20, "nf_calories": 66.5 }
+]
+```
+
+> Calories formula: `MET × weight_kg × (duration_min / 60)` — e.g. Running: `9.8 × 70 × 0.5 = 343.0 kcal`
 
 ### Sheety POST request body
 
@@ -391,7 +428,11 @@ Copy `.env.example` to `.env` and fill in your Sheety values. The advanced build
 
 **Normalised exercise names in the prompt.** Early testing showed the model returning past-tense verbs as names ("Swam", "Ran") rather than standard exercise names, causing inconsistent data in the sheet. The prompt explicitly instructs the model to use the well-known exercise name (e.g. "Swimming", "Running", "Push-Ups") and never a conjugated or past-tense verb. The prompt also asks for each distinct exercise exactly once to prevent the model from returning duplicate entries for the same activity.
 
-**User profile passed in the prompt, not as API parameters.** Unlike Nutritionix (which accepted `gender`, `weight_kg`, etc. as structured fields), the LLM receives user stats as natural language in the prompt. This is intentionally simple — the model uses them to improve calorie estimates without requiring a custom schema.
+**`SYNONYMS` map as a second normalisation layer.** Even with prompt guidance, the LLM occasionally returns variant names. The `SYNONYMS` dict in `client.py` acts as a deterministic post-processing step — "jogging", "jog", "sprinting" all map to "Running" regardless of what the model returns. This guarantees sheet consistency without relying solely on prompt compliance.
+
+**MET table for calorie calculation, not the LLM.** Early testing showed Ollama's calorie estimates were inconsistent — the same exercise logged at different times would return wildly different values. LLMs are not designed to perform precise arithmetic. The fix was to remove calorie estimation from the prompt entirely and calculate it locally using the standard sports science formula: `MET × weight_kg × (duration_min / 60)`. The MET table in `client.py` covers 28 common exercises, with a fallback of `5.0` for anything unlisted. This makes calorie output deterministic and scientifically grounded.
+
+**Session loop in `advanced/main.py`.** The original single-run design required returning to the menu between every exercise entry. The advanced build now loops until the user types `q`, allowing a full workout session to be logged without re-selecting from the menu each time.
 
 **`config.py` — zero magic numbers.** Every URL, model name, format string, and user profile value lives in one place. Change your weight once; it applies everywhere.
 
@@ -447,6 +488,20 @@ This approach:
 
 The only new setup step for users is installing Ollama and pulling the model (~2GB, one-time).
 
+### LLM calorie estimates were inaccurate and inconsistent
+
+After switching to Ollama, calorie values logged to the sheet were clearly wrong — the same 30-minute run would return different calorie counts on different runs, and the numbers didn't reflect real-world energy expenditure.
+
+**Root cause:** LLMs are not calculators. They produce plausible-sounding numbers based on training data patterns, not actual arithmetic. Asking the model to estimate calories introduced non-determinism and inaccuracy into what should be a consistent, calculable value.
+
+**Solution:** Remove calorie estimation from the Ollama prompt entirely. Calories are now calculated locally using the Metabolic Equivalent of Task (MET) formula — the standard method used in sports science:
+
+```
+calories = MET × weight_kg × (duration_min / 60)
+```
+
+A `MET` dictionary in `client.py` maps 28 common exercises to their established MET values (sourced from the Compendium of Physical Activities). Exercises not in the table fall back to a default MET of `5.0`. The result is deterministic, reproducible, and grounded in exercise physiology rather than a language model's best guess.
+
 ### LLM response inconsistency — exercise names and duplicates
 
 After switching to Ollama, two prompt engineering issues emerged during testing:
@@ -467,7 +522,7 @@ Built as Day 38 of 100 Days of Code by Dr. Angela Yu.
 
 **Concepts covered in the original build:** HTTP POST requests, custom headers, JSON bodies, parsing API responses, `datetime` for timestamps, `requests.auth.HTTPBasicAuth`, chaining two APIs together.
 
-**The advanced build extends into:** OOP module design (single-responsibility classes), centralised config, environment variable management with `python-dotenv`, proper HTTP error handling with `raise_for_status()`, local LLM integration via Ollama, structured JSON prompt engineering.
+**The advanced build extends into:** OOP module design (single-responsibility classes), centralised config, environment variable management with `python-dotenv`, proper HTTP error handling with `raise_for_status()`, local LLM integration via Ollama, structured JSON prompt engineering, MET-based calorie calculation, synonym normalisation, session loop design.
 
 See [docs/COURSE_NOTES.md](docs/COURSE_NOTES.md) for full concept breakdown.
 
