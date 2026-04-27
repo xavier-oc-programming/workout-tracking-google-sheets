@@ -28,6 +28,7 @@ class OllamaClient:
             f"List each distinct exercise exactly once — do not repeat or split the same activity. "
             f"Each object must have exactly these keys: "
             f"\"name\" (string), \"duration_min\" (number), \"nf_calories\" (number). "
+            f"The name must be the standard well-known exercise name (e.g. 'Swimming', 'Running', 'Cycling', 'Push-Ups', 'Yoga') — never past tense, never a conjugated verb. "
             f"All values must be non-null numbers. "
             f"Estimate calories burned using: weight {self._weight_kg}kg, "
             f"height {self._height_cm}cm, age {self._age}, gender {self._gender}. "
