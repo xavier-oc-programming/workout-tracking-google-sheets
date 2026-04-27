@@ -15,13 +15,20 @@ from sheet_writer import SheetWriter
 
 AMBIGUOUS = {"gym", "workout", "exercise", "training", "worked out", "exercised", "trained"}
 
+GYM_EXERCISES = [
+    "Weight Training", "Running", "Cycling", "Rowing", "Elliptical",
+    "Jump Rope", "HIIT", "CrossFit", "Push-Ups", "Pull-Ups", "Sit-Ups",
+    "Boxing", "Yoga", "Pilates", "Stretching", "Zumba", "Martial Arts",
+    "Rock Climbing", "Basketball",
+]
+
 
 def disambiguate(text: str) -> str:
     """If the input is too vague, prompt the user to pick a specific exercise."""
     words = set(text.lower().split())
     if not words & AMBIGUOUS:
         return text
-    exercises = list(MET.keys())
+    exercises = GYM_EXERCISES
     print("\n  Your input is a bit vague. What did you do specifically?\n")
     for i, name in enumerate(exercises, 1):
         print(f"  {i:>2}) {name}")
