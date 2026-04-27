@@ -1,6 +1,32 @@
 import json
 import requests
 
+SYNONYMS: dict[str, str] = {
+    "jogging": "Running",
+    "jog": "Running",
+    "sprinting": "Running",
+    "sprint": "Running",
+    "swimming": "Swimming",
+    "swam": "Swimming",
+    "swim": "Swimming",
+    "cycling": "Cycling",
+    "biking": "Cycling",
+    "bike": "Cycling",
+    "walking": "Walking",
+    "walk": "Walking",
+    "hiking": "Hiking",
+    "hike": "Hiking",
+    "push-ups": "Push-Ups",
+    "pushups": "Push-Ups",
+    "push ups": "Push-Ups",
+    "pull-ups": "Pull-Ups",
+    "pullups": "Pull-Ups",
+    "pull ups": "Pull-Ups",
+    "sit-ups": "Sit-Ups",
+    "situps": "Sit-Ups",
+    "sit ups": "Sit-Ups",
+}
+
 
 class OllamaClient:
     """Parses natural-language exercise input using a local Ollama LLM."""
@@ -55,10 +81,13 @@ class OllamaClient:
                     break
             else:
                 exercises = list(data.values())[0]
-        return [
+        valid = [
             e for e in exercises
             if isinstance(e, dict)
             and e.get("duration_min") is not None
             and e.get("nf_calories") is not None
             and e.get("name")
         ]
+        for e in valid:
+            e["name"] = SYNONYMS.get(e["name"].lower(), e["name"])
+        return valid
