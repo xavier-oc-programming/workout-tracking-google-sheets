@@ -1,3 +1,9 @@
+import sys
+
+print("Nutritionix API no longer available to the general public.")
+print("Please try the advanced build with Ollama instead: python advanced/main.py")
+sys.exit(0)
+
 import requests
 from requests.auth import HTTPBasicAuth
 from datetime import datetime
