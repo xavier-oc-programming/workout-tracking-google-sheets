@@ -1,3 +1,4 @@
+import re
 import sys
 import os
 from pathlib import Path
@@ -23,11 +24,33 @@ GYM_EXERCISES = [
 ]
 
 
+_DURATION_RE = re.compile(
+    r"(\d+)\s*h(?:ours?|r)?(?:\s*(\d+)\s*min(?:utes?)?)?|"
+    r"an?\s+hour|"
+    r"(\d+)\s*min(?:utes?)?",
+    re.IGNORECASE,
+)
+
+
+def _extract_duration(text: str) -> str:
+    m = _DURATION_RE.search(text)
+    if not m:
+        return ""
+    if "an hour" in text.lower() or "a hour" in text.lower():
+        return "60 mins"
+    hours, mins, mins_only = m.group(1), m.group(2), m.group(3)
+    if mins_only:
+        return f"{mins_only} mins"
+    total = int(hours or 0) * 60 + int(mins or 0)
+    return f"{total} mins"
+
+
 def disambiguate(text: str) -> str:
     """If the input is too vague, prompt the user to pick a specific exercise."""
     words = set(text.lower().split())
     if not words & AMBIGUOUS:
         return text
+    duration = _extract_duration(text)
     exercises = GYM_EXERCISES
     print("\n  Your input is a bit vague. What did you do specifically?\n")
     for i, name in enumerate(exercises, 1):
@@ -39,7 +62,8 @@ def disambiguate(text: str) -> str:
             return text
         if choice.isdigit() and 1 <= int(choice) <= len(exercises):
             chosen = exercises[int(choice) - 1]
-            duration = input(f"  How long did you do {chosen}? (e.g. 45 mins): ").strip()
+            if not duration:
+                duration = input(f"  How long did you do {chosen}? (e.g. 45 mins): ").strip()
             return f"{chosen} for {duration}"
         print("  Invalid choice, try again.")
 
