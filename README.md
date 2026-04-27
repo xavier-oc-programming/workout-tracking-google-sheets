@@ -1,12 +1,12 @@
 # Workout Tracker — Google Sheets
 
-Log workouts to Google Sheets using natural language via Nutritionix and Sheety.
+Log workouts to Google Sheets using natural language and a local AI model.
 
-Type a plain-English description of your workout — "I ran 5km and did 20 minutes of yoga" — and the script parses it, calculates duration and calories burned, then writes each exercise as a timestamped row directly into a Google Sheet. No manual data entry, no spreadsheet formulas to maintain.
+Type a plain-English description of your workout — "I ran 5km and did 20 minutes of yoga" — and the script parses it, estimates duration and calories burned, then writes each exercise as a timestamped row directly into a Google Sheet. No manual data entry, no spreadsheet formulas to maintain.
 
-The project is built in two versions. The **original** build is the course script from Day 38 of 100 Days of Code: a single file, hardcoded credentials, procedural top-to-bottom execution. It shows the raw mechanics of chaining two APIs together. The **advanced** build refactors it into separate classes (`NutritionixClient`, `SheetWriter`), centralises all constants in `config.py`, and loads credentials from a `.env` file. Both versions are launchable from a shared `menu.py`.
+The project is built in two versions. The **original** build is the course script from Day 38 of 100 Days of Code: a single file, hardcoded credentials, procedural top-to-bottom execution. It shows the raw mechanics of chaining two APIs together using Nutritionix for natural language parsing. The **advanced** build refactors it into separate classes (`OllamaClient`, `SheetWriter`), centralises all constants in `config.py`, loads credentials from a `.env` file, and replaces Nutritionix with a locally-running Ollama LLM — meaning no API keys, no accounts, and no cost for anyone who clones the repo.
 
-The two external services doing the heavy lifting are [Nutritionix](https://www.nutritionix.com/business/api) — which exposes a natural language endpoint that converts workout descriptions into structured exercise data — and [Sheety](https://sheety.co) — which wraps any Google Sheet in a REST API so you can POST rows to it with a plain HTTP request.
+Both versions log to Google Sheets via [Sheety](https://sheety.co), which wraps any Google Sheet in a REST API so you can POST rows with a plain HTTP request.
 
 ---
 
@@ -25,29 +25,37 @@ The two external services doing the heavy lifting are [Nutritionix](https://www.
 - [10. Data schema](#10-data-schema)
 - [11. Environment variables](#11-environment-variables)
 - [12. Design decisions](#12-design-decisions)
-- [13. Course context](#13-course-context)
-- [14. Dependencies](#14-dependencies)
+- [13. Challenges](#13-challenges)
+- [14. Course context](#14-course-context)
+- [15. Dependencies](#15-dependencies)
 
 ---
 
 ## 0. Prerequisites
 
-### Nutritionix
+### Ollama (advanced build only)
 
-Sign up for a free developer account at the Nutritionix developer portal.
+The advanced build uses a locally-running LLM via [Ollama](https://ollama.com) instead of a cloud API. No account or API key required — everything runs on your machine.
 
-After logging in, create a new application. You will receive an App ID and API Key.
+**Install Ollama:**
 
-**Gotcha:** new keys may take a few minutes to activate after creation.
+```bash
+brew install ollama        # macOS
+# or download from https://ollama.com
+```
 
-| .env variable | Where to find it |
-|---|---|
-| `NUTRITIONIX_APP_ID` | Dashboard → your app → App ID |
-| `NUTRITIONIX_API_KEY` | Dashboard → your app → API Key |
+**Start Ollama and pull the model:**
+
+```bash
+brew services start ollama   # start as a background service
+ollama pull llama3.2         # ~2GB download, one-time only
+```
+
+Once Ollama is running and the model is pulled, no further setup is needed — the advanced build connects to it automatically at `http://localhost:11434`.
 
 ---
 
-### Sheety
+### Sheety (both builds)
 
 Sheety turns a Google Sheet into a REST API. Sign up at sheety.co using Google.
 
@@ -66,19 +74,35 @@ Sheety turns a Google Sheet into a REST API. Sign up at sheety.co using Google.
 
 ---
 
+### Nutritionix (original build only)
+
+The original build uses Nutritionix for natural language parsing. Note: **the Nutritionix free tier has been discontinued** — the original build is kept as a historical reference of the course exercise, but may no longer work with a free account.
+
+---
+
 ## 1. Quick start
+
+**Advanced build (recommended):**
+
+```bash
+# 1. Start Ollama and ensure the model is ready
+brew services start ollama
+ollama pull llama3.2         # skip if already pulled
+
+# 2. Clone and install
+pip install -r requirements.txt
+cp .env.example .env         # fill in your Sheety credentials only
+
+# 3. Run
+python menu.py               # select 2, or run directly:
+python advanced/main.py
+```
+
+**Original build (course reference):**
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # fill in your credentials
-python menu.py         # select 1 or 2, or run builds directly
-```
-
-**Run builds directly:**
-
-```bash
-python original/main.py   # course version (uses hardcoded credentials)
-python advanced/main.py   # OOP version (reads from .env)
+python original/main.py      # uses hardcoded credentials — may fail if Nutritionix free tier is inactive
 ```
 
 ---
@@ -88,9 +112,11 @@ python advanced/main.py   # OOP version (reads from .env)
 | Feature | Original | Advanced |
 |---|---|---|
 | Natural language exercise input | Yes | Yes |
-| Nutritionix API integration | Yes | Yes |
+| Exercise parsing | Nutritionix API (cloud) | Ollama LLM (local) |
 | Google Sheets logging via Sheety | Yes | Yes |
 | Basic Auth for Sheety | Yes | Yes |
+| Requires API key / account | Yes (Nutritionix) | No |
+| Works offline | No | Yes (after model pull) |
 | Credentials from `.env` | No (hardcoded) | Yes |
 | OOP modules | No | Yes |
 | Config constants centralised | No | Yes |
@@ -110,30 +136,45 @@ Tell me which exercises you did: I ran 5km and did push-ups for 20 minutes
 **Example output (advanced):**
 
 ```
-Logged: Running — 30 min, 301.22 kcal → {'workout': {'id': 2, 'date': '08/04/2026', ...}}
-Logged: Push-Ups — 20 min, 115.0 kcal → {'workout': {'id': 3, 'date': '08/04/2026', ...}}
+Logged: Running — 30 min, 290.0 kcal → {'workout': {'id': 2, 'date': '27/04/2026', ...}}
+Logged: Push-Ups — 20 min, 112.0 kcal → {'workout': {'id': 3, 'date': '27/04/2026', ...}}
 ```
 
 **Google Sheet result:**
 
 | date | time | exercise | duration (minutes) | calories |
 |---|---|---|---|---|
-| 08/04/2026 | 11:32:10 | Running | 30 | 301.22 |
-| 08/04/2026 | 11:32:10 | Push-Ups | 20 | 115.0 |
+| 27/04/2026 | 11:32:10 | Running | 30 | 290.0 |
+| 27/04/2026 | 11:32:10 | Push-Ups | 20 | 112.0 |
 
 ---
 
 ## 4. Data flow
 
+**Advanced build:**
+
 ```
 User input (plain English)
-  → POST to Nutritionix /v2/natural/exercise
-    body: { query, gender, weight_kg, height_cm, age }
+  → POST to Ollama local API (localhost:11434/api/chat)
+      body: { model, messages: [{ role: "user", content: prompt with user stats }] }
+  → Response: JSON array of exercise objects with name, duration_min, nf_calories
+    → For each exercise: round duration to int, round calories to 2dp
+      → POST to Sheety endpoint with Basic Auth
+          body: { workout: { date, time, exercise, duration (minutes), calories } }
+            → New row appears in Google Sheet
+```
+
+**Original build:**
+
+```
+User input (plain English)
+  → POST to Nutritionix /v2/natural/exercise  [may be inactive on free tier]
+      body: { query, gender, weight_kg, height_cm, age }
   → Response: list of exercise objects with name, duration_min, nf_calories
     → For each exercise: round duration to int, round calories to 2dp
       → POST to Sheety endpoint with Basic Auth
-        body: { workout: { date, time, exercise, duration (minutes), calories } }
-          → New row appears in Google Sheet
+          body: { workout: { date, time, exercise, duration (minutes), calories } }
+            → New row appears in Google Sheet
 ```
 
 ---
@@ -142,7 +183,7 @@ User input (plain English)
 
 **Both builds**
 
-**Natural language parsing.** Describe your workout in plain English — Nutritionix extracts exercise name, duration, and calories burned automatically.
+**Natural language parsing.** Describe your workout in plain English — the parser extracts exercise name, duration, and estimated calories burned automatically.
 
 **Automatic date and time stamping.** Each logged row includes the current date (`dd/mm/yyyy`) and time (`hh:mm:ss`).
 
@@ -152,13 +193,15 @@ User input (plain English)
 
 **Advanced build only**
 
-**OOP module split.** `NutritionixClient` handles all API fetching; `SheetWriter` handles all Sheety posting. Each is independently testable.
+**Local LLM parsing via Ollama.** Exercise descriptions are interpreted by `llama3.2` running entirely on your machine — no cloud account, no API key, no usage limits, no cost.
 
-**Centralised config.** All URLs, formats, and user profile defaults live in `config.py` — no magic values elsewhere.
+**OOP module split.** `OllamaClient` handles all LLM interaction; `SheetWriter` handles all Sheety posting. Each is independently testable.
+
+**Centralised config.** All URLs, model names, formats, and user profile defaults live in `config.py` — no magic values elsewhere.
 
 **Proper error surfacing.** `response.raise_for_status()` raises an `HTTPError` on 4xx/5xx responses rather than silently returning empty data.
 
-**Credentials from `.env`.** No hardcoded secrets. All credentials are loaded via `python-dotenv`.
+**Credentials from `.env`.** No hardcoded secrets. All Sheety credentials are loaded via `python-dotenv`.
 
 ---
 
@@ -168,8 +211,8 @@ User input (plain English)
 
 ```
 python menu.py
-├── 1 → original/main.py  (course script)
-├── 2 → advanced/main.py  (OOP refactor)
+├── 1 → original/main.py  (course script — Nutritionix + Sheety)
+├── 2 → advanced/main.py  (OOP refactor — Ollama + Sheety)
 └── q → exit
 ```
 
@@ -178,13 +221,13 @@ python menu.py
 ```
 advanced/main.py starts
   │
-  ├── Load .env credentials
-  ├── Instantiate NutritionixClient + SheetWriter
+  ├── Load .env credentials (Sheety only)
+  ├── Instantiate OllamaClient + SheetWriter
   ├── Prompt user: "Tell me which exercises you did:"
   │
-  ├── POST query to Nutritionix API
+  ├── POST prompt to Ollama local API
   │     ├── HTTP error → raise_for_status() → exception propagates to caller
-  │     └── Success → list of exercise dicts returned
+  │     └── Success → parse JSON → list of exercise dicts returned
   │
   └── For each exercise:
         ├── Round duration (int) and calories (2dp)
@@ -209,11 +252,11 @@ workout-tracking-google-sheets/
 ├── README.md                 # This file
 │
 ├── original/
-│   └── main.py               # Verbatim course script (hardcoded credentials)
+│   └── main.py               # Course script — Nutritionix + Sheety, hardcoded credentials
 │
 ├── advanced/
-│   ├── config.py             # All constants: endpoint, user profile, date format
-│   ├── client.py             # NutritionixClient — fetches exercise data from API
+│   ├── config.py             # All constants: Ollama endpoint/model, user profile, date format
+│   ├── client.py             # OllamaClient — sends exercise queries to local Ollama LLM
 │   ├── sheet_writer.py       # SheetWriter — posts exercise rows to Sheety
 │   └── main.py               # Orchestrator — wires client + writer together
 │
@@ -225,12 +268,14 @@ workout-tracking-google-sheets/
 
 ## 8. Module reference
 
-### `advanced/client.py` — `NutritionixClient`
+### `advanced/client.py` — `OllamaClient`
 
 | Method | Returns | Description |
 |---|---|---|
-| `__init__(app_id, api_key, endpoint, gender, weight_kg, height_cm, age)` | `None` | Stores credentials and user profile |
-| `get_exercises(query: str)` | `list[dict]` | POSTs query to Nutritionix; returns list of exercise dicts |
+| `__init__(endpoint, model, weight_kg, height_cm, age, gender)` | `None` | Stores Ollama config and user profile for calorie estimation |
+| `get_exercises(query: str)` | `list[dict]` | POSTs prompt to local Ollama API; parses and returns list of exercise dicts |
+
+Each dict in the returned list contains: `name` (str), `duration_min` (float), `nf_calories` (float).
 
 ### `advanced/sheet_writer.py` — `SheetWriter`
 
@@ -247,8 +292,9 @@ All constants are in [advanced/config.py](advanced/config.py).
 
 | Constant | Default | Description |
 |---|---|---|
-| `NUTRITIONIX_ENDPOINT` | `https://trackapi.nutritionix.com/v2/natural/exercise` | Nutritionix Natural Language API URL |
-| `GENDER` | `"male"` | User gender sent to Nutritionix for calorie calculation |
+| `OLLAMA_ENDPOINT` | `http://localhost:11434/api/chat` | Local Ollama chat API URL |
+| `OLLAMA_MODEL` | `"llama3.2"` | Model name to use for exercise parsing |
+| `GENDER` | `"male"` | User gender — passed to the LLM for calorie estimation |
 | `WEIGHT_KG` | `70` | User weight in kg |
 | `HEIGHT_CM` | `175` | User height in cm |
 | `AGE` | `27` | User age in years |
@@ -259,26 +305,29 @@ All constants are in [advanced/config.py](advanced/config.py).
 
 ## 10. Data schema
 
-### Nutritionix API request body
+### Ollama API request body (advanced build)
 
 ```json
 {
-  "query": "I ran 5km and did push-ups for 20 minutes",
-  "gender": "male",
-  "weight_kg": 70,
-  "height_cm": 175,
-  "age": 27
+  "model": "llama3.2",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Extract all exercises from this input and return ONLY a valid JSON array. Each object must have exactly these keys: \"name\" (string), \"duration_min\" (number), \"nf_calories\" (number). Estimate calories burned using: weight 70kg, height 175cm, age 27, gender male. Input: \"I ran 5km and did push-ups for 20 minutes\""
+    }
+  ],
+  "stream": false,
+  "format": "json"
 }
 ```
 
-### Nutritionix API response (one exercise object)
+### Ollama API response → parsed exercise array
 
 ```json
-{
-  "name": "running",
-  "duration_min": 30.0,
-  "nf_calories": 301.22
-}
+[
+  { "name": "running", "duration_min": 30, "nf_calories": 290.0 },
+  { "name": "push-ups", "duration_min": 20, "nf_calories": 112.0 }
+]
 ```
 
 ### Sheety POST request body
@@ -286,11 +335,11 @@ All constants are in [advanced/config.py](advanced/config.py).
 ```json
 {
   "workout": {
-    "date": "08/04/2026",
+    "date": "27/04/2026",
     "time": "11:32:10",
     "exercise": "Running",
     "duration (minutes)": 30,
-    "calories": 301.22
+    "calories": 290.0
   }
 }
 ```
@@ -301,11 +350,11 @@ All constants are in [advanced/config.py](advanced/config.py).
 {
   "workout": {
     "id": 2,
-    "date": "08/04/2026",
+    "date": "27/04/2026",
     "time": "11:32:10",
     "exercise": "Running",
     "duration (minutes)": 30,
-    "calories": 301.22
+    "calories": 290.0
   }
 }
 ```
@@ -314,29 +363,37 @@ All constants are in [advanced/config.py](advanced/config.py).
 
 | date | time | exercise | duration (minutes) | calories |
 |---|---|---|---|---|
-| 08/04/2026 | 11:32:10 | Running | 30 | 301.22 |
+| 27/04/2026 | 11:32:10 | Running | 30 | 290.0 |
 
 ---
 
 ## 11. Environment variables
 
-Copy `.env.example` to `.env` and fill in your values.
+Copy `.env.example` to `.env` and fill in your Sheety values. The advanced build no longer requires Nutritionix credentials.
 
-| Variable | Required | Description |
+| Variable | Required by | Description |
 |---|---|---|
-| `NUTRITIONIX_APP_ID` | Yes | Nutritionix App ID |
-| `NUTRITIONIX_API_KEY` | Yes | Nutritionix API Key |
-| `SHEETY_ENDPOINT` | Yes | Full Sheety endpoint URL for your sheet tab |
-| `SHEETY_USERNAME` | Yes | Basic Auth username set in Sheety |
-| `SHEETY_PASSWORD` | Yes | Basic Auth password set in Sheety |
+| `SHEETY_ENDPOINT` | Both builds | Full Sheety endpoint URL for your sheet tab |
+| `SHEETY_USERNAME` | Both builds | Basic Auth username set in Sheety |
+| `SHEETY_PASSWORD` | Both builds | Basic Auth password set in Sheety |
+
+> The original build reads Nutritionix credentials and Sheety credentials directly from hardcoded variables in `original/main.py`, not from `.env`.
 
 ---
 
 ## 12. Design decisions
 
-**`config.py` — zero magic numbers.** Every URL, format string, and user profile value lives in one place. Change your weight once; it applies everywhere.
+**`OllamaClient` instead of a cloud NLP API.** The advanced build deliberately routes exercise parsing through a local LLM rather than any cloud service. This means anyone who clones the repo can run it immediately after pulling a model — no account, no key, no rate limit, no cost ever. The tradeoff is a ~2GB one-time model download and the requirement that Ollama is running locally.
 
-**Separate `NutritionixClient` and `SheetWriter` modules.** Each class has one responsibility and can be tested in isolation. Swapping the HTTP client or the sheet backend requires touching one file, not the orchestrator.
+**`format: "json"` in the Ollama request.** Ollama's `format` parameter constrains the model to output valid JSON, avoiding the need to strip markdown fences or prose from the response.
+
+**Flexible response parsing in `OllamaClient.get_exercises`.** The LLM may return a bare array or wrap it in a key (`exercises`, `workouts`, `results`). The client handles all forms rather than assuming a fixed shape.
+
+**User profile passed in the prompt, not as API parameters.** Unlike Nutritionix (which accepted `gender`, `weight_kg`, etc. as structured fields), the LLM receives user stats as natural language in the prompt. This is intentionally simple — the model uses them to improve calorie estimates without requiring a custom schema.
+
+**`config.py` — zero magic numbers.** Every URL, model name, format string, and user profile value lives in one place. Change your weight once; it applies everywhere.
+
+**Separate `OllamaClient` and `SheetWriter` modules.** Each class has one responsibility and can be tested in isolation. Swapping the LLM backend or the sheet backend requires touching one file, not the orchestrator.
 
 **Credentials via `.env`, never hardcoded.** Hardcoded secrets end up in git history and leak when repos are made public. `.env` stays local; `.env.example` documents what is needed without exposing values.
 
@@ -344,7 +401,7 @@ Copy `.env.example` to `.env` and fill in your values.
 
 **`Path(__file__).parent` for all file paths.** The script runs correctly whether launched from `menu.py` (which sets `cwd` to the script's directory) or directly from the terminal.
 
-**Pure-logic modules raise exceptions instead of `sys.exit()`.** `NutritionixClient.get_exercises` and `SheetWriter.log_exercise` raise `requests.HTTPError` on failure. `main.py` decides how to handle it — a design that keeps the modules reusable.
+**Pure-logic modules raise exceptions instead of `sys.exit()`.** `OllamaClient.get_exercises` and `SheetWriter.log_exercise` raise `requests.HTTPError` on failure. `main.py` decides how to handle it — a design that keeps the modules reusable.
 
 **`sys.path.insert` pattern.** Ensures sibling imports (`from config import ...`) resolve correctly when the script is launched via `subprocess.run` from `menu.py`.
 
@@ -356,27 +413,68 @@ Copy `.env.example` to `.env` and fill in your values.
 
 ---
 
-## 13. Course context
+## 13. Challenges
+
+### Nutritionix discontinued its free tier
+
+The course exercise was designed around the Nutritionix Natural Language API, which accepted workout descriptions in plain English and returned structured exercise data (name, duration, calories) calibrated to the user's body stats. This was the only free cloud API that handled the full natural language → structured exercise pipeline in a single call.
+
+During development, Nutritionix announced that the public free-access tier had been permanently discontinued. Existing free accounts hit their limit, and new free signups were no longer offered. This broke the core feature of the project.
+
+**Investigation:** We surveyed all known free alternatives:
+
+| API | Free? | Natural language? | Calories? |
+|---|---|---|---|
+| API Ninjas Calories Burned | Yes | No — structured input only | Yes |
+| wger | Yes, open-source | No | Manual (MET formula) |
+| ExerciseDB | Yes | No | No |
+| Nutritionix | No longer | Yes | Yes |
+
+No free cloud API offered the full natural language → calories pipeline that Nutritionix provided.
+
+**Constraint:** The solution had to remain free for any user who clones the repo, with no mandatory sign-ups or API keys. This ruled out paid tiers and APIs that require registration, since the whole point of the project is that anyone should be able to run it.
+
+**Solution:** Replace Nutritionix with a locally-running LLM via [Ollama](https://ollama.com). The `OllamaClient` sends the user's exercise description to `llama3.2` running at `localhost:11434`, prompts it to return a structured JSON array, and parses the result. The user profile (weight, height, age, gender) is included in the prompt so the model can estimate calories in the same way Nutritionix did.
+
+This approach:
+- Requires no API key or account
+- Is free forever, for any user
+- Preserves the natural language input experience
+- Is still a genuine REST API call (POST to `localhost:11434/api/chat`) — the learning objective of the exercise is fully intact
+- Works offline after the one-time model pull
+
+The only new setup step for users is installing Ollama and pulling the model (~2GB, one-time).
+
+---
+
+## 14. Course context
 
 Built as Day 38 of 100 Days of Code by Dr. Angela Yu.
 
 **Concepts covered in the original build:** HTTP POST requests, custom headers, JSON bodies, parsing API responses, `datetime` for timestamps, `requests.auth.HTTPBasicAuth`, chaining two APIs together.
 
-**The advanced build extends into:** OOP module design (single-responsibility classes), centralised config, environment variable management with `python-dotenv`, proper HTTP error handling with `raise_for_status()`.
+**The advanced build extends into:** OOP module design (single-responsibility classes), centralised config, environment variable management with `python-dotenv`, proper HTTP error handling with `raise_for_status()`, local LLM integration via Ollama, structured JSON prompt engineering.
 
 See [docs/COURSE_NOTES.md](docs/COURSE_NOTES.md) for full concept breakdown.
 
 ---
 
-## 14. Dependencies
+## 15. Dependencies
 
 | Module | Used in | Purpose |
 |---|---|---|
-| `requests` | `original/main.py`, `advanced/client.py`, `advanced/sheet_writer.py` | HTTP POST to Nutritionix and Sheety |
+| `requests` | `original/main.py`, `advanced/client.py`, `advanced/sheet_writer.py` | HTTP POST to Ollama and Sheety |
 | `requests.auth.HTTPBasicAuth` | `original/main.py`, `advanced/sheet_writer.py` | Basic Authentication for Sheety |
-| `python-dotenv` | `advanced/main.py` | Load credentials from `.env` |
+| `python-dotenv` | `advanced/main.py` | Load Sheety credentials from `.env` |
+| `json` | `advanced/client.py` | Parse JSON response from Ollama |
 | `datetime` | `original/main.py`, `advanced/main.py` | Generate date and time stamps |
 | `os` | `menu.py`, `advanced/main.py` | Clear console; read env vars |
 | `sys` | `menu.py`, `advanced/main.py` | Python executable path; `sys.path.insert` |
 | `subprocess` | `menu.py` | Launch builds as child processes |
 | `pathlib.Path` | `menu.py`, `advanced/main.py` | Resolve file paths portably |
+
+**External tool (not a pip package):**
+
+| Tool | Install | Purpose |
+|---|---|---|
+| [Ollama](https://ollama.com) | `brew install ollama` | Runs `llama3.2` locally; exposes REST API at `localhost:11434` |
