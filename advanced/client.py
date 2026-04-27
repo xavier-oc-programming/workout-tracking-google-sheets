@@ -45,6 +45,8 @@ class OllamaClient:
         data = json.loads(content)
         if isinstance(data, list):
             exercises = data
+        elif isinstance(data, dict) and "name" in data:
+            exercises = [data]
         else:
             for key in ("exercises", "workouts", "results"):
                 if key in data:
