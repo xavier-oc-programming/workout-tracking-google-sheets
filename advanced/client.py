@@ -25,6 +25,15 @@ SYNONYMS: dict[str, str] = {
     "sit-ups": "Sit-Ups",
     "situps": "Sit-Ups",
     "sit ups": "Sit-Ups",
+    "jump rope": "Jump Rope",
+    "jumping rope": "Jump Rope",
+    "skipping": "Jump Rope",
+    "skip rope": "Jump Rope",
+    "weight training": "Weight Training",
+    "weightlifting": "Weight Training",
+    "weights": "Weight Training",
+    "gym": "Weight Training",
+    "lifting": "Weight Training",
 }
 
 # MET values per exercise (Metabolic Equivalent of Task)

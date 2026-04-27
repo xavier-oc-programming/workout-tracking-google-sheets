@@ -10,8 +10,31 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 from config import OLLAMA_ENDPOINT, OLLAMA_MODEL, GENDER, WEIGHT_KG, HEIGHT_CM, AGE, DATE_FORMAT, TIME_FORMAT
-from client import OllamaClient
+from client import OllamaClient, MET
 from sheet_writer import SheetWriter
+
+AMBIGUOUS = {"gym", "workout", "exercise", "training", "worked out", "exercised", "trained"}
+
+
+def disambiguate(text: str) -> str:
+    """If the input is too vague, prompt the user to pick a specific exercise."""
+    words = set(text.lower().split())
+    if not words & AMBIGUOUS:
+        return text
+    exercises = list(MET.keys())
+    print("\n  Your input is a bit vague. What did you do specifically?\n")
+    for i, name in enumerate(exercises, 1):
+        print(f"  {i:>2}) {name}")
+    print()
+    while True:
+        choice = input("  Enter number (or press Enter to describe freely): ").strip()
+        if choice == "":
+            return text
+        if choice.isdigit() and 1 <= int(choice) <= len(exercises):
+            chosen = exercises[int(choice) - 1]
+            duration = input(f"  How long did you do {chosen}? (e.g. 45 mins): ").strip()
+            return f"{chosen} for {duration}"
+        print("  Invalid choice, try again.")
 
 
 def main() -> None:
@@ -34,6 +57,7 @@ def main() -> None:
         if exercise_text.lower() == "q":
             break
 
+        exercise_text = disambiguate(exercise_text)
         exercises = nutritionix.get_exercises(exercise_text)
 
         today = datetime.now().strftime(DATE_FORMAT)
