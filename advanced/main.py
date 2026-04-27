@@ -35,19 +35,20 @@ def main() -> None:
     today = datetime.now().strftime(DATE_FORMAT)
     now = datetime.now().strftime(TIME_FORMAT)
 
+    print(f"\n  Logged to Google Sheets — {today} at {now}\n")
     for exercise in exercises:
         duration = int(round(exercise["duration_min"]))
         calories = round(exercise["nf_calories"], 2)
         name = exercise["name"].title()
 
-        row = writer.log_exercise(
+        writer.log_exercise(
             date=today,
             time=now,
             name=name,
             duration_mins=duration,
             calories=calories,
         )
-        print(f"Logged: {name} — {duration} min, {calories} kcal → {row}")
+        print(f"  ✓  {name:<20} {duration} min   {calories} kcal")
 
 
 if __name__ == "__main__":
