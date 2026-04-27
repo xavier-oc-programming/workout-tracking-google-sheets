@@ -57,6 +57,7 @@ MET: dict[str, float] = {
     "CrossFit":         8.0,
     "HIIT":             8.0,
     "Zumba":            6.0,
+    "Water Polo":       10.0,
 }
 DEFAULT_MET = 5.0
 
