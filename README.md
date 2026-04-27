@@ -206,6 +206,8 @@ User input (plain English)
 
 **Session loop.** The advanced build stays open after each log and re-prompts immediately, so you can log an entire workout session in one go. Type `q` to return to the main menu.
 
+**Gym disambiguation.** When the input is vague (e.g. "went to the gym", "worked out"), the app detects the ambiguity and presents a numbered list of gym-specific exercises to choose from. Any duration already mentioned in the original input is extracted automatically — the user is only asked for it if it was missing.
+
 **OOP module split.** `OllamaClient` handles all LLM interaction; `SheetWriter` handles all Sheety posting. Each is independently testable.
 
 **Centralised config.** All URLs, model names, formats, and user profile defaults live in `config.py` — no magic values elsewhere.
@@ -238,6 +240,11 @@ advanced/main.py starts
   └── Loop:
         ├── Prompt: "Tell me which exercises you did (or 'q' to go back):"
         ├── "q" → break → return to menu
+        │
+        ├── Disambiguate if vague ("gym", "workout", etc.)
+        │     ├── Show numbered list of gym exercises
+        │     ├── Extract duration from original input (ask only if missing)
+        │     └── Rewrite input as specific exercise + duration
         │
         ├── POST prompt to Ollama local API
         │     ├── HTTP error → raise_for_status() → exception propagates
@@ -434,6 +441,8 @@ Copy `.env.example` to `.env` and fill in your Sheety values. The advanced build
 
 **Session loop in `advanced/main.py`.** The original single-run design required returning to the menu between every exercise entry. The advanced build now loops until the user types `q`, allowing a full workout session to be logged without re-selecting from the menu each time.
 
+**Gym disambiguation before sending to Ollama.** Vague inputs like "went to the gym" or "worked out" cause the LLM to guess — often returning "Running" for a gym session. The fix intercepts these inputs before they reach Ollama: a set of trigger words (`AMBIGUOUS`) is checked against the user's input, and if matched, a numbered list of 19 gym-specific exercises is shown. The user picks one and the input is rewritten as a specific exercise before being sent to the model. Duration is extracted from the original text via regex so the user is never asked to repeat information they already gave.
+
 **`config.py` — zero magic numbers.** Every URL, model name, format string, and user profile value lives in one place. Change your weight once; it applies everywhere.
 
 **Separate `OllamaClient` and `SheetWriter` modules.** Each class has one responsibility and can be tested in isolation. Swapping the LLM backend or the sheet backend requires touching one file, not the orchestrator.
@@ -512,7 +521,13 @@ After switching to Ollama, two prompt engineering issues emerged during testing:
 
 **Solution:** Two-part fix:
 1. The prompt was updated to explicitly require standard well-known exercise names ("Swimming", "Running", "Push-Ups") and forbid past-tense or conjugated verbs. Examples were included directly in the prompt to anchor the model's output.
-2. The prompt instructs the model to list each distinct exercise exactly once. A filter was added in `get_exercises` to strip any returned entry missing a `name`, `duration_min`, or `nf_calories` value, so a malformed model response can never crash the logging loop.
+2. The prompt instructs the model to list each distinct exercise exactly once. A filter was added in `get_exercises` to strip any returned entry missing a `name` or `duration_min` value, so a malformed model response can never crash the logging loop.
+
+### Vague inputs — "went to the gym"
+
+When a user types "went to the gym for an hour", the model has no idea what they actually did and guesses — typically returning "Running" or "Gym Workout". The logged data would be meaningless.
+
+**Solution:** Intercept before Ollama. A set of ambiguous trigger words (`gym`, `workout`, `exercise`, `training`, etc.) is checked against the user's input. On a match, a numbered list of 19 gym-specific exercises is displayed and the user picks one. Duration is extracted from the original input using a regex (`_extract_duration`) so common patterns like "an hour", "45 mins", "1 hour 15 minutes" are parsed automatically. The user is only asked for duration if none was found. The input is then rewritten as a concrete string (e.g. `"Weight Training for 60 mins"`) and passed to Ollama normally.
 
 ---
 
