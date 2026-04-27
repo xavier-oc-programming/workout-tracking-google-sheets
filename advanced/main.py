@@ -29,26 +29,30 @@ def main() -> None:
         password=os.getenv("SHEETY_PASSWORD", ""),
     )
 
-    exercise_text = input("Tell me which exercises you did: ")
-    exercises = nutritionix.get_exercises(exercise_text)
+    while True:
+        exercise_text = input("\nTell me which exercises you did (or 'q' to go back): ").strip()
+        if exercise_text.lower() == "q":
+            break
 
-    today = datetime.now().strftime(DATE_FORMAT)
-    now = datetime.now().strftime(TIME_FORMAT)
+        exercises = nutritionix.get_exercises(exercise_text)
 
-    print(f"\n  Logged to Google Sheets — {today} at {now}\n")
-    for exercise in exercises:
-        duration = int(round(exercise["duration_min"]))
-        calories = round(exercise["nf_calories"], 2)
-        name = exercise["name"].title()
+        today = datetime.now().strftime(DATE_FORMAT)
+        now = datetime.now().strftime(TIME_FORMAT)
 
-        writer.log_exercise(
-            date=today,
-            time=now,
-            name=name,
-            duration_mins=duration,
-            calories=calories,
-        )
-        print(f"  ✓  {name:<20} {duration} min   {calories} kcal")
+        print(f"\n  Logged to Google Sheets — {today} at {now}\n")
+        for exercise in exercises:
+            duration = int(round(exercise["duration_min"]))
+            calories = round(exercise["nf_calories"], 2)
+            name = exercise["name"].title()
+
+            writer.log_exercise(
+                date=today,
+                time=now,
+                name=name,
+                duration_mins=duration,
+                calories=calories,
+            )
+            print(f"  ✓  {name:<20} {duration} min   {calories} kcal")
 
 
 if __name__ == "__main__":
