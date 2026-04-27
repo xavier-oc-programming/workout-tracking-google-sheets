@@ -24,9 +24,11 @@ class OllamaClient:
     def get_exercises(self, query: str) -> list[dict]:
         """Send a natural-language exercise query to Ollama. Returns a list of exercise dicts."""
         prompt = (
-            f"Extract all exercises from this input and return ONLY a valid JSON array. "
+            f"Extract the unique exercises from this input and return ONLY a valid JSON array. "
+            f"List each distinct exercise exactly once — do not repeat or split the same activity. "
             f"Each object must have exactly these keys: "
             f"\"name\" (string), \"duration_min\" (number), \"nf_calories\" (number). "
+            f"All values must be non-null numbers. "
             f"Estimate calories burned using: weight {self._weight_kg}kg, "
             f"height {self._height_cm}cm, age {self._age}, gender {self._gender}. "
             f"Input: \"{query}\""
@@ -42,8 +44,18 @@ class OllamaClient:
         content = response.json()["message"]["content"]
         data = json.loads(content)
         if isinstance(data, list):
-            return data
-        for key in ("exercises", "workouts", "results"):
-            if key in data:
-                return data[key]
-        return list(data.values())[0]
+            exercises = data
+        else:
+            for key in ("exercises", "workouts", "results"):
+                if key in data:
+                    exercises = data[key]
+                    break
+            else:
+                exercises = list(data.values())[0]
+        return [
+            e for e in exercises
+            if isinstance(e, dict)
+            and e.get("duration_min") is not None
+            and e.get("nf_calories") is not None
+            and e.get("name")
+        ]

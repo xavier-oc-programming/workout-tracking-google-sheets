@@ -5,5 +5,5 @@ LOGO = r"""
    \ V  V / (_) | |  |   < (_) | || |_    | || | | (_| | (_| |  __/ |
     \_/\_/ \___/|_|  |_|\_\___/ \__/\__|   |_||_|  \__,_|\__,_|\___|_|
 
-  Natural language → Google Sheets  |  Powered by Nutritionix + Sheety
+  Natural language → Google Sheets  |  Powered by Ollama + Sheety
 """

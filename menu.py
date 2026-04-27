@@ -17,8 +17,8 @@ def main() -> None:
 
         print(LOGO)
         print("Select a build to run:")
-        print("  1) Original  — course script (Nutritionix + Sheety, single-run)")
-        print("  2) Advanced  — OOP refactor with config, client, and writer modules")
+        print("  1) Original  — course script (Nutritionix + Sheety, non-functional)")
+        print("  2) Advanced  — OOP refactor with Ollama + Sheety")
         print("  q) Quit")
         print()
 
