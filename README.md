@@ -313,7 +313,7 @@ All constants are in [advanced/config.py](advanced/config.py).
   "messages": [
     {
       "role": "user",
-      "content": "Extract all exercises from this input and return ONLY a valid JSON array. Each object must have exactly these keys: \"name\" (string), \"duration_min\" (number), \"nf_calories\" (number). Estimate calories burned using: weight 70kg, height 175cm, age 27, gender male. Input: \"I ran 5km and did push-ups for 20 minutes\""
+      "content": "Extract the unique exercises from this input and return ONLY a valid JSON array. List each distinct exercise exactly once — do not repeat or split the same activity. Each object must have exactly these keys: \"name\" (string), \"duration_min\" (number), \"nf_calories\" (number). The name must be the standard well-known exercise name (e.g. 'Swimming', 'Running', 'Cycling', 'Push-Ups', 'Yoga') — never past tense, never a conjugated verb. All values must be non-null numbers. Estimate calories burned using: weight 70kg, height 175cm, age 27, gender male. Input: \"I ran 5km and did push-ups for 20 minutes\""
     }
   ],
   "stream": false,
@@ -325,8 +325,8 @@ All constants are in [advanced/config.py](advanced/config.py).
 
 ```json
 [
-  { "name": "running", "duration_min": 30, "nf_calories": 290.0 },
-  { "name": "push-ups", "duration_min": 20, "nf_calories": 112.0 }
+  { "name": "Running", "duration_min": 30, "nf_calories": 290.0 },
+  { "name": "Push-Ups", "duration_min": 20, "nf_calories": 112.0 }
 ]
 ```
 
@@ -387,7 +387,9 @@ Copy `.env.example` to `.env` and fill in your Sheety values. The advanced build
 
 **`format: "json"` in the Ollama request.** Ollama's `format` parameter constrains the model to output valid JSON, avoiding the need to strip markdown fences or prose from the response.
 
-**Flexible response parsing in `OllamaClient.get_exercises`.** The LLM may return a bare array or wrap it in a key (`exercises`, `workouts`, `results`). The client handles all forms rather than assuming a fixed shape.
+**Flexible response parsing in `OllamaClient.get_exercises`.** The LLM may return a bare array, a single exercise dict, or an array wrapped in a key (`exercises`, `workouts`, `results`). The client handles all forms rather than assuming a fixed shape, and filters out any entry with a `null` name, duration, or calorie value before returning.
+
+**Normalised exercise names in the prompt.** Early testing showed the model returning past-tense verbs as names ("Swam", "Ran") rather than standard exercise names, causing inconsistent data in the sheet. The prompt explicitly instructs the model to use the well-known exercise name (e.g. "Swimming", "Running", "Push-Ups") and never a conjugated or past-tense verb. The prompt also asks for each distinct exercise exactly once to prevent the model from returning duplicate entries for the same activity.
 
 **User profile passed in the prompt, not as API parameters.** Unlike Nutritionix (which accepted `gender`, `weight_kg`, etc. as structured fields), the LLM receives user stats as natural language in the prompt. This is intentionally simple — the model uses them to improve calorie estimates without requiring a custom schema.
 
@@ -444,6 +446,18 @@ This approach:
 - Works offline after the one-time model pull
 
 The only new setup step for users is installing Ollama and pulling the model (~2GB, one-time).
+
+### LLM response inconsistency — exercise names and duplicates
+
+After switching to Ollama, two prompt engineering issues emerged during testing:
+
+**Past-tense names.** When the user typed "I swam for an hour", the model returned `"name": "Swam"` — a past-tense verb — instead of the standard exercise name "Swimming". This caused inconsistent data in the Google Sheet (one row logged as "Swam", the next as "Swimming" for the same activity).
+
+**Duplicate entries.** For a single-exercise input, the model occasionally returned two entries for the same activity (e.g. both "Swimming" and "Swim"), with one of them missing a `duration_min` value, crashing the loop with a `TypeError`.
+
+**Solution:** Two-part fix:
+1. The prompt was updated to explicitly require standard well-known exercise names ("Swimming", "Running", "Push-Ups") and forbid past-tense or conjugated verbs. Examples were included directly in the prompt to anchor the model's output.
+2. The prompt instructs the model to list each distinct exercise exactly once. A filter was added in `get_exercises` to strip any returned entry missing a `name`, `duration_min`, or `nf_calories` value, so a malformed model response can never crash the logging loop.
 
 ---
 
