@@ -9,16 +9,15 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
-from config import NUTRITIONIX_ENDPOINT, GENDER, WEIGHT_KG, HEIGHT_CM, AGE, DATE_FORMAT, TIME_FORMAT
-from client import NutritionixClient
+from config import OLLAMA_ENDPOINT, OLLAMA_MODEL, GENDER, WEIGHT_KG, HEIGHT_CM, AGE, DATE_FORMAT, TIME_FORMAT
+from client import OllamaClient
 from sheet_writer import SheetWriter
 
 
 def main() -> None:
-    nutritionix = NutritionixClient(
-        app_id=os.getenv("NUTRITIONIX_APP_ID", ""),
-        api_key=os.getenv("NUTRITIONIX_API_KEY", ""),
-        endpoint=NUTRITIONIX_ENDPOINT,
+    nutritionix = OllamaClient(
+        endpoint=OLLAMA_ENDPOINT,
+        model=OLLAMA_MODEL,
         gender=GENDER,
         weight_kg=WEIGHT_KG,
         height_cm=HEIGHT_CM,

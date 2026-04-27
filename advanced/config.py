@@ -1,5 +1,6 @@
 # ── API / URLs ────────────────────────────────────────────────────────────── #
-NUTRITIONIX_ENDPOINT = "https://trackapi.nutritionix.com/v2/natural/exercise"
+OLLAMA_ENDPOINT = "http://localhost:11434/api/chat"
+OLLAMA_MODEL = "llama3.2"
 
 # ── User Profile ──────────────────────────────────────────────────────────── #
 # Default values — edit these to match your stats.
